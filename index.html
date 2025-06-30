@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reporte Verde</title>
+
+  <!-- Estilos propios -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Leaflet (mapa) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+</head>
+<body>
+  <header>
+    <h1>Reporte Verde ♻️</h1>
+    <p>Reporta problemas ambientales con foto y ubicación.</p>
+  </header>
+
+  <!-- FORMULARIO -->
+  <section class="card">
+    <h2>Nuevo reporte</h2>
+    <form id="report-form">
+      <label for="description">Descripción:</label>
+      <textarea id="description" required></textarea>
+
+      <label for="image">Imagen:</label>
+      <input type="file" id="image" accept="image/*" required />
+
+      <button type="submit">Enviar reporte</button>
+    </form>
+    <p id="status" class="status"></p>
+  </section>
+
+  <!-- LISTADO -->
+  <section class="card">
+    <h2>Reportes enviados</h2>
+    <ul id="report-list"></ul>
+  </section>
+
+  <!-- MAPA -->
+  <section class="card">
+    <h2>Mapa de reportes</h2>
+    <div id="map"></div>
+  </section>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Lógica de la página -->
+  <script>
+    /** ===============================
+     *  VARIABLES GLOBALES
+     *  ==============================*/
+    const form = document.getElementById('report-form');
+    const statusEl = document.getElementById('status');
+    const listEl = document.getElementById('report-list');
+    const map = L.map('map').setView([-12.0464, -77.0428], 12); // centro Lima
+    const markers = L.layerGroup().addTo(map);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    /** ===============================
+     *  CARGAR REPORTES GUARDADOS
+     *  ==============================*/
+    const saved = JSON.parse(localStorage.getItem('reportes') || '[]');
+    saved.forEach(addReportToUI);
+
+    /** ===============================
+     *  OBTENER COORDENADAS GPS
+     *  ==============================*/
+    let currentCoords = null;
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          currentCoords = [pos.coords.latitude, pos.coords.longitude];
+        },
+        () => (statusEl.textContent = '⚠️ Activa la ubicación para geolocalizar los reportes'),
+        { enableHighAccuracy: true }
+      );
+    }
+
+    /** ===============================
+     *  MANEJAR ENVÍO DEL FORMULARIO
+     *  ==============================*/
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+
+      if (!currentCoords) {
+        statusEl.textContent = '⚠️ No se pudo obtener tu ubicación.';
+        return;
+      }
+
+      const description = document.getElementById('description').value.trim();
+      const imageFile = document.getElementById('image').files[0];
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const report = {
+          description,
+          image: reader.result,           // base64
+          coords: currentCoords,
+          date: new Date().toLocaleString()
+        };
+        addReportToUI(report);
+
+        // persistir en localStorage
+        saved.push(report);
+        localStorage.setItem('reportes', JSON.stringify(saved));
+
+        // limpiar formulario
+        form.reset();
+        statusEl.textContent = '✅ Reporte enviado. ¡Gracias!';
+        setTimeout(() => (statusEl.textContent = ''), 3000);
+      };
+
+      reader.readAsDataURL(imageFile);
+    });
+
+    /** ===============================
+     *  FUNCIÓN: Añadir reporte al DOM y mapa
+     *  ==============================*/
+    function addReportToUI(report) {
+      // Listado
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <img src="${report.image}" alt="foto" />
+        <div>
+          <strong>${report.description}</strong><br />
+          ${report.date}<br />
+          <small>${report.coords[0].toFixed(5)}, ${report.coords[1].toFixed(5)}</small>
+        </div>
+      `;
+      listEl.prepend(li);
+
+      // Mapa
+      const marker = L.marker(report.coords).addTo(markers);
+      marker.bindPopup(
+        `<strong>${report.description}</strong><br />${report.date}`
+      );
+    }
+  </script>
+</body>
+</html>
